@@ -43,6 +43,9 @@ frappe.utils = {
 		});
 		return out.join(newline);
 	},
+	escape_html: function(txt) {
+		return $("<div></div>").text(txt || "").html();
+	},
 	is_url: function(txt) {
 		return txt.toLowerCase().substr(0,7)=='http://'
 			|| txt.toLowerCase().substr(0,8)=='https://'
@@ -486,5 +489,9 @@ frappe.utils = {
 
 		// reset the original title
 		frappe.utils.set_title(frappe._original_title);
+	},
+
+	is_image_file: function(filename) {
+		return (/\.(gif|jpg|jpeg|tiff|png|svg)$/i).test(filename);
 	}
 };

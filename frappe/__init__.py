@@ -38,9 +38,12 @@ class _dict(dict):
 	def copy(self):
 		return _dict(dict(self).copy())
 
-def _(msg):
+def _(msg, lang=None):
 	"""Returns translated string in current lang, if exists."""
-	if local.lang == "en":
+	if not lang:
+		lang = local.lang
+
+	if lang == "en":
 		return msg
 
 	from frappe.translate import get_full_dict
@@ -66,7 +69,6 @@ db = local("db")
 conf = local("conf")
 form = form_dict = local("form_dict")
 request = local("request")
-request_method = local("request_method")
 response = local("response")
 session = local("session")
 user = local("user")
@@ -109,7 +111,6 @@ def init(site, sites_path=None):
 	local.sites_path = sites_path
 	local.site_path = os.path.join(sites_path, site)
 
-	local.request_method = request.method if request else None
 	local.request_ip = None
 	local.response = _dict({"docs":[]})
 	local.task_id = None
@@ -309,7 +310,7 @@ def sendmail(recipients=(), sender="", subject="No Subject", message="No Message
 		as_markdown=False, bulk=False, reference_doctype=None, reference_name=None,
 		unsubscribe_method=None, unsubscribe_params=None, unsubscribe_message=None,
 		attachments=None, content=None, doctype=None, name=None, reply_to=None,
-		cc=(), message_id=None, as_bulk=False, send_after=None):
+		cc=(), message_id=None, as_bulk=False, send_after=None, expose_recipients=False):
 	"""Send email using user's default **Email Account** or global default **Email Account**.
 
 
@@ -327,6 +328,7 @@ def sendmail(recipients=(), sender="", subject="No Subject", message="No Message
 	:param reply_to: Reply-To email id.
 	:param message_id: Used for threading. If a reply is received to this email, Message-Id is sent back as In-Reply-To in received email.
 	:param send_after: Send after the given datetime.
+	:param expose_recipients: Display all recipients in the footer message - "This email was sent to"
 	"""
 
 	if bulk or as_bulk:
@@ -335,7 +337,8 @@ def sendmail(recipients=(), sender="", subject="No Subject", message="No Message
 			subject=subject, message=content or message,
 			reference_doctype = doctype or reference_doctype, reference_name = name or reference_name,
 			unsubscribe_method=unsubscribe_method, unsubscribe_params=unsubscribe_params, unsubscribe_message=unsubscribe_message,
-			attachments=attachments, reply_to=reply_to, cc=cc, message_id=message_id, send_after=send_after)
+			attachments=attachments, reply_to=reply_to, cc=cc, message_id=message_id, send_after=send_after,
+			expose_recipients=expose_recipients)
 	else:
 		import frappe.email
 		if as_markdown:
@@ -904,6 +907,20 @@ def get_all(doctype, *args, **kwargs):
 	if not "limit_page_length" in kwargs:
 		kwargs["limit_page_length"] = 0
 	return get_list(doctype, *args, **kwargs)
+
+def get_value(*args, **kwargs):
+	"""Returns a document property or list of properties.
+
+	Alias for `frappe.db.get_value`
+
+	:param doctype: DocType name.
+	:param filters: Filters like `{"x":"y"}` or name of the document. `None` if Single DocType.
+	:param fieldname: Column name.
+	:param ignore: Don't raise exception if table, column is missing.
+	:param as_dict: Return values as dict.
+	:param debug: Print query in error log.
+	"""
+	return db.get_value(*args, **kwargs)
 
 def add_version(doc):
 	"""Insert a new **Version** of the given document.

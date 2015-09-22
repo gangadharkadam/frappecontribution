@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 import frappe
 from frappe.model.document import Document
 from frappe.build import html_to_js_template
-from frappe import conf
+from frappe import conf, _
 
 class Page(Document):
 	def autoname(self):
@@ -72,7 +72,7 @@ class Page(Document):
 
 		allowed = [d.role for d in frappe.get_all("Page Role", fields=["role"],
 			filters={"parent": self.name})]
-		
+
 		if not allowed:
 			return True
 
@@ -85,16 +85,18 @@ class Page(Document):
 		from frappe.modules import get_module_path, scrub
 		import os
 
-		path = os.path.join(get_module_path(self.module), 'page', scrub(self.name))
+		page_name = scrub(self.name)
+
+		path = os.path.join(get_module_path(self.module), 'page', page_name)
 
 		# script
-		fpath = os.path.join(path, scrub(self.name) + '.js')
+		fpath = os.path.join(path, page_name + '.js')
 		if os.path.exists(fpath):
 			with open(fpath, 'r') as f:
 				self.script = unicode(f.read(), "utf-8")
 
 		# css
-		fpath = os.path.join(path, scrub(self.name) + '.css')
+		fpath = os.path.join(path, page_name + '.css')
 		if os.path.exists(fpath):
 			with open(fpath, 'r') as f:
 				self.style = unicode(f.read(), "utf-8")
@@ -109,3 +111,5 @@ class Page(Document):
 		if frappe.lang != 'en':
 			from frappe.translate import get_lang_js
 			self.script += get_lang_js("page", self.name)
+
+
