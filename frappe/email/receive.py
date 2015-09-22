@@ -121,7 +121,8 @@ class POP3Server:
 		try:
 			self.validate_pop(pop_meta)
 			msg = self.pop.retr(msg_num)
-
+			print "b'\n'.join(msg[1])"
+			print b'\n'.join(msg[1])
 			self.latest_messages.append(b'\n'.join(msg[1]))
 
 		except (TotalSizeExceededError, EmailTimeoutError):

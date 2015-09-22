@@ -15,8 +15,6 @@ import markdown2, re
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta
 
-class SentEmailInInbox(Exception): pass
-
 class EmailAccount(Document):
 	def autoname(self):
 		"""Set name as `email_account_name` or make title from email id."""
@@ -122,14 +120,16 @@ class EmailAccount(Document):
 			else:
 				pop3 = self.get_pop3()
 				incoming_mails = pop3.get_messages()
+				print "incoming_mails"
+				print incoming_mails
 
 			exceptions = []
 			for raw in incoming_mails:
 				try:
+					print "raw--------"
+					print type(raw)
+					print raw
 					communication = self.insert_communication(raw)
-
-				except SentEmailInInbox:
-					frappe.db.rollback()
 
 				except Exception:
 					frappe.db.rollback()
@@ -144,11 +144,6 @@ class EmailAccount(Document):
 
 	def insert_communication(self, raw):
 		email = Email(raw)
-
-		if email.from_email == self.email_id:
-			# gmail shows sent emails in inbox
-			# and we don't want emails sent by us to be pulled back into the system again
-			raise SentEmailInInbox
 
 		communication = frappe.get_doc({
 			"doctype": "Communication",
@@ -237,7 +232,7 @@ class EmailAccount(Document):
 			if parent:
 				parent = frappe.get_doc(self.append_to, parent[0].name)
 
-		if not parent and self.append_to and self.append_to!="Communication":
+		if not parent and self.append_to:
 			# no parent found, but must be tagged
 			# insert parent type doc
 			parent = frappe.new_doc(self.append_to)
