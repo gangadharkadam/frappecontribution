@@ -321,41 +321,49 @@ reder_sms_dialog = function(me, _me,email_dialog){
 		no_submit_on_enter: true,
 		fields: [
 			// fetch the customer numner
-			{label:__("To"), fieldtype:"Int", reqd: 1, fieldname:"recipients"},
+			{label:__("To"), fieldtype:"Data", reqd: 1, fieldname:"recipients"},
 
 			{fieldtype: "Section Break"},
-			{label:__("Message"), fieldtype:"Small Text", reqd: 1,
-				fieldname:"content"},
+			{label:__("Message"), fieldtype:"Small Text", reqd: 1,fieldname:"content"},
 		],
 		primary_action_label: "Send",
 		primary_action: function() {
-			to = $("input[data-fieldname$='recipients']").val().split(",");
+
+			to_string=$("input[data-fieldname$='recipients']").val()
+			to = to_string.split(",");
 			msg = $("textarea[data-fieldname$='content']").val();
+
+			if (to_string==''|| to_string.length<='1' || msg.length<='1' || msg==' ' ){
+            alert(" 'To' and 'Message' are mandatory fields ");
+            }
             
-			return frappe.call({
-				method: "erpnext.setup.doctype.sms_settings.sms_settings.send_sms",
-				args: {
-					receiver_list: to,
-					msg: msg
-				},
-				callback: function(r) {
-					_me.dialog.hide();
-					if (email_dialog){
-						new frappe.views.CommunicationComposer({
-							doc: me.frm.doc,
-							txt: frappe.markdown(me.input.val()),
-							frm: me.frm
-						})
-						recipients = me.frm.doc.raised_by? me.frm.doc.raised_by : me.frm.doc.contact_email? me.frm.doc.contact_email : "";
-						$("input[data-fieldname='recipients']").val(recipients);
-						$(".frappe-list").val(msg);
+            else{
+	            return frappe.call({
+					method: "erpnext.setup.doctype.sms_settings.sms_settings.send_sms",
+					args: {
+						receiver_list: to,
+						msg: msg
+					},
+					callback: function(r) {
+						_me.dialog.hide();
+						_me.dialog.empty();
+						if (email_dialog){
+							new frappe.views.CommunicationComposer({
+								doc: me.frm.doc,
+								txt: frappe.markdown(me.input.val()),
+								frm: me.frm
+							})
+							recipients = me.frm.doc.raised_by? me.frm.doc.raised_by : me.frm.doc.contact_email? me.frm.doc.contact_email : "";
+							$("input[data-fieldname='recipients']").val(recipients);
+							$(".frappe-list").val(msg);
+						}
+						if(r.exc) {
+							msgprint(r.exc);
+							return;
+						}
 					}
-					if(r.exc) {
-						msgprint(r.exc);
-						return;
-					}
-				}
-			});
+				});
+           }
 		}
 	});
 }
