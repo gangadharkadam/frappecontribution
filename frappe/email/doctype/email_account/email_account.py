@@ -9,11 +9,15 @@ from frappe.utils import validate_email_add, cint, get_datetime, DATE_FORMAT, st
 from frappe.utils.user import is_system_user
 from frappe.utils.jinja import render_template
 from frappe.email.smtp import SMTPServer
-from frappe.email.receive import POP3Server, Email
+from frappe.email.receive import POP3Server,Email
 from poplib import error_proto
+import imaplib 
 import markdown2, re
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta
+
+class SentEmailInInbox(Exception): pass  # imap
+class error(Exception): pass             # imap
 
 class EmailAccount(Document):
 	def autoname(self):
@@ -28,7 +32,7 @@ class EmailAccount(Document):
 		self.name = self.email_account_name
 
 	def validate(self):
-		"""Validate email id and check POP3 and SMTP connections is enabled."""
+		"""Validate email id and check POP3/IMAP and SMTP connections is enabled."""
 		if self.email_id:
 			validate_email_add(self.email_id, True)
 
@@ -100,18 +104,19 @@ class EmailAccount(Document):
 			"host": self.pop3_server,
 			"use_ssl": self.use_ssl,
 			"username": getattr(self, "login_id", None) or self.email_id,
-			"password": self.password
+			"password": self.password,
+			"use_imap":self.use_imap
 		}
 
 		if not self.pop3_server:
 			frappe.throw(_("{0} is required").format("POP3 Server"))
 
 		pop3 = POP3Server(frappe._dict(args))
+			
 		try:
 			pop3.connect()
-		except error_proto, e:
+		except (error_proto,imaplib.IMAP4.error) , e:
 			frappe.throw(e.message)
-
 		return pop3
 
 	def receive(self, test_mails=None):
@@ -122,15 +127,10 @@ class EmailAccount(Document):
 			else:
 				pop3 = self.get_pop3()
 				incoming_mails = pop3.get_messages()
-				print "incoming_mails"
-				print incoming_mails
 
 			exceptions = []
 			for raw in incoming_mails:
 				try:
-					print "raw--------"
-					print type(raw)
-					print raw
 					communication = self.insert_communication(raw)
 
 				except Exception:

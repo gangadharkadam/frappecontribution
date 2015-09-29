@@ -3,7 +3,7 @@
 
 from __future__ import unicode_literals
 import time
-import _socket, poplib
+import _socket, poplib,imaplib
 import frappe
 from frappe import _
 from frappe.utils import extract_email_id, convert_utc_to_user_timezone, now, cint, cstr, strip
@@ -36,15 +36,44 @@ class POP3Server:
 
 	def connect(self):
 		"""Connect to **Email Account**."""
+
+		if cint(self.settings.use_imap):
+			self.connect_imap()
+			return True
+		else:
+			try:
+				if cint(self.settings.use_ssl):
+					self.pop = Timed_POP3_SSL(self.settings.host, timeout=frappe.conf.get("pop_timeout"))
+				else:
+					self.pop = Timed_POP3(self.settings.host, timeout=frappe.conf.get("pop_timeout"))
+
+				self.pop.user(self.settings.username)
+				self.pop.pass_(self.settings.password)
+
+				# connection established!
+				return True
+
+			except _socket.error:
+				# Invalid mail server -- due to refusing connection
+				frappe.msgprint(_('Invalid Mail Server. Please rectify and try again.'))
+				raise
+
+			except poplib.error_proto, e:
+				if self.is_temporary_system_problem(e):
+					return False
+
+				else:
+					frappe.msgprint(_('Invalid User Name or Support Password. Please rectify and try again.'))
+					raise
+
+	def connect_imap(self):
+		"""Connect to **Email Account**."""
 		try:
 			if cint(self.settings.use_ssl):
-				self.pop = Timed_POP3_SSL(self.settings.host, timeout=frappe.conf.get("pop_timeout"))
+				self.pop = Timed_IMAP4_SSL(self.settings.host, timeout=frappe.conf.get("pop_timeout"))
 			else:
-				self.pop = Timed_POP3(self.settings.host, timeout=frappe.conf.get("pop_timeout"))
-
-			self.pop.user(self.settings.username)
-			self.pop.pass_(self.settings.password)
-
+				self.pop = Timed_IMAP4(self.settings.host, timeout=frappe.conf.get("pop_timeout"))
+			self.pop.login(self.settings.username,self.settings.password)
 			# connection established!
 			return True
 
@@ -53,11 +82,7 @@ class POP3Server:
 			frappe.msgprint(_('Invalid Mail Server. Please rectify and try again.'))
 			raise
 
-		except poplib.error_proto, e:
-			if self.is_temporary_system_problem(e):
-				return False
-
-			else:
+		except :
 				frappe.msgprint(_('Invalid User Name or Support Password. Please rectify and try again.'))
 				raise
 
@@ -75,7 +100,13 @@ class POP3Server:
 			# track if errors arised
 			self.errors = False
 			self.latest_messages = []
-			pop_list = self.pop.list()[1]
+			if cint(self.settings.use_imap):
+				self.pop.select("Inbox") 
+				responce, message = self.pop.uid('search',None, "UNSEEN") # search and return Uids
+				pop_list =  message[0].split()
+			else:
+				pop_list = self.pop.list()[1]
+
 			num = num_copy = len(pop_list)
 
 			# WARNING: Hard coded max no. of messages to be popped
@@ -92,14 +123,17 @@ class POP3Server:
 					break
 
 				try:
-					self.retrieve_message(pop_meta, i+1)
+					if cint(self.settings.use_imap):
+						self.retrieve_message(pop_meta)
+					else:
+						self.retrieve_message(pop_meta, i+1)
 				except (TotalSizeExceededError, EmailTimeoutError, LoginLimitExceeded):
 					break
 
 			# WARNING: Mark as read - message number 101 onwards from the pop list
 			# This is to avoid having too many messages entering the system
 			num = num_copy
-			if num > 100 and not self.errors:
+			if num > 100 and not self.errors and not cint(self.settings.use_imap):
 				for m in xrange(101, num+1):
 					self.pop.dele(m)
 
@@ -112,18 +146,24 @@ class POP3Server:
 
 		finally:
 			# no matter the exception, pop should quit if connected
-			self.pop.quit()
+			if cint(self.settings.use_imap):
+				self.pop.logout()
+			else:
+				self.pop.quit()			
 
 		return self.latest_messages
 
-	def retrieve_message(self, pop_meta, msg_num):
+	def retrieve_message(self, pop_meta,msg_num=None):
 		incoming_mail = None
 		try:
 			self.validate_pop(pop_meta)
-			msg = self.pop.retr(msg_num)
-			print "b'\n'.join(msg[1])"
-			print b'\n'.join(msg[1])
-			self.latest_messages.append(b'\n'.join(msg[1]))
+
+			if cint(self.settings.use_imap):
+				status,message = self.pop.uid('fetch', pop_meta, '(RFC822)')
+				self.latest_messages.append(message[0][1])
+			else:
+				msg = self.pop.retr(msg_num)
+				self.latest_messages.append(b'\n'.join(msg[1]))
 
 		except (TotalSizeExceededError, EmailTimeoutError):
 			# propagate this error to break the loop
@@ -141,9 +181,11 @@ class POP3Server:
 				self.errors = True
 				frappe.db.rollback()
 
-				self.pop.dele(msg_num)
+				if not cint(self.settings.use_imap):
+					self.pop.dele(msg_num)
 		else:
-			self.pop.dele(msg_num)
+			if not cint(self.settings.use_imap):
+				self.pop.dele(msg_num)
 
 	def has_login_limit_exceeded(self, e):
 		return "-ERR Exceeded the login limit" in strip(cstr(e.message))
@@ -196,7 +238,6 @@ class Email:
 		:param content: Raw message."""
 		import email, email.utils
 		import datetime
-
 
 		self.raw = content
 		self.mail = email.message_from_string(self.raw)
@@ -347,3 +388,9 @@ class Timed_POP3(TimerMixin, poplib.POP3):
 
 class Timed_POP3_SSL(TimerMixin, poplib.POP3_SSL):
 	_super = poplib.POP3_SSL
+
+class Timed_IMAP4(TimerMixin, imaplib.IMAP4):
+	_super = imaplib.IMAP4
+
+class Timed_IMAP4_SSL(TimerMixin, imaplib.IMAP4_SSL):
+	_super = imaplib.IMAP4_SSL
